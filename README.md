@@ -2,6 +2,8 @@
 
 Pulsyon is a backend systems engineering project for telemetry ingestion and incident analysis. It explores relational schema design, SQL query performance, REST API development, asynchronous processing, and system evolution through a phased V1 → V4 architecture.
 
+Built as part of the Google Software Engineering Program (BASTA G-SWEP), with mentorship from a Google software engineer.
+
 ---
 
 ## Overview
