@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui";
 import { Badge } from "@/components/ui";
-import { services, ServiceStatus } from "@/lib/data";
+import type { Service } from "@/lib/data";
+import { ServiceStatus } from "@/lib/data";
 import {
   CheckCircle2,
   AlertCircle,
@@ -9,6 +10,7 @@ import {
   Activity,
   AlertTriangle,
 } from "lucide-react";
+import { getMetricsOverview } from "@/lib/api";
 
 function getStatusIcon(status: ServiceStatus) {
   switch (status) {
@@ -44,7 +46,13 @@ function getStatusBadge(status: ServiceStatus) {
   }
 }
 
-export default function ServiceOverview() {
+export default async function ServiceOverview() {
+  let services: Service[] = [];
+  try {
+    services = (await getMetricsOverview("1h")).services;
+  } catch {
+    services = [];
+  }
   return (
     <div className="p-8">
       <div className="mb-8">
@@ -55,6 +63,9 @@ export default function ServiceOverview() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {services.length === 0 && (
+          <div className="text-sm text-[#9CA3AF]">Unable to load services.</div>
+        )}
         {services.map((service) => (
           <Card key={service.id} className="bg-[#111827] border-[#1F2937] p-6">
             <div className="flex items-start justify-between mb-6">

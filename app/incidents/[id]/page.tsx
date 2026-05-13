@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Badge, Button, Card } from "@/components/ui";
-import { incidents } from "@/lib/data";
 import { ArrowLeft, AlertTriangle, Clock, CheckCircle2, TrendingUp } from "lucide-react";
+import { getIncidentById } from "@/lib/api";
 
 function getSeverityBadge(severity: string) {
   switch (severity) {
@@ -76,9 +76,10 @@ export default async function IncidentDetail({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const incident = incidents.find((inc) => inc.id === id);
-
-  if (!incident) {
+  let incident;
+  try {
+    incident = (await getIncidentById(id)).incident;
+  } catch {
     return (
       <div className="p-8">
         <div className="text-center py-12">

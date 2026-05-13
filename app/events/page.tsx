@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Badge,
   Button,
@@ -17,8 +17,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui";
-import { events } from "@/lib/data";
+import type { Event } from "@/lib/data";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { getEvents } from "@/lib/api";
 
 const ITEMS_PER_PAGE = 20;
 
@@ -64,28 +65,58 @@ export default function EventExplorer() {
   const [serviceFilter, setServiceFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [timeRange, setTimeRange] = useState<string>("1h");
-  const [currentPage, setCurrentPage] = useState(1);
+  const [items, setItems] = useState<Event[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [cursorStack, setCursorStack] = useState<string[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredEvents = useMemo(() => {
-    return events.filter((event) => {
-      if (serviceFilter !== "all" && event.service !== serviceFilter) return false;
-      if (statusFilter !== "all") {
-        const statusCode = parseInt(statusFilter);
-        if (statusCode === 2 && !(event.statusCode >= 200 && event.statusCode < 300))
-          return false;
-        if (statusCode === 4 && !(event.statusCode >= 400 && event.statusCode < 500))
-          return false;
-        if (statusCode === 5 && event.statusCode < 500) return false;
-      }
-      return true;
-    });
-  }, [serviceFilter, statusFilter]);
+  const statusClass = useMemo<"all" | "2xx" | "4xx" | "5xx">(() => {
+    if (statusFilter === "2") return "2xx";
+    if (statusFilter === "4") return "4xx";
+    if (statusFilter === "5") return "5xx";
+    return "all";
+  }, [statusFilter]);
 
-  const totalPages = Math.ceil(filteredEvents.length / ITEMS_PER_PAGE);
-  const paginatedEvents = filteredEvents.slice(
-    (currentPage - 1) * ITEMS_PER_PAGE,
-    currentPage * ITEMS_PER_PAGE,
-  );
+  useEffect(() => {
+    // Reset pagination whenever filters change.
+    setCursor(null);
+    setCursorStack([]);
+  }, [serviceFilter, statusClass, timeRange]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    getEvents({
+      service: serviceFilter,
+      statusClass,
+      window: timeRange as "15m" | "1h" | "6h" | "24h",
+      limit: ITEMS_PER_PAGE,
+      cursor,
+    })
+      .then((data) => {
+        if (cancelled) return;
+        setItems(data.items);
+        setNextCursor(data.nextCursor);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load events");
+        setItems([]);
+        setNextCursor(null);
+      })
+      .finally(() => {
+        if (cancelled) return;
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [serviceFilter, statusClass, timeRange, cursor]);
 
   return (
     <div className="p-8">
@@ -145,6 +176,11 @@ export default function EventExplorer() {
       </Card>
 
       <Card className="bg-[#111827] border-[#1F2937]">
+        {error && (
+          <div className="p-4 border-b border-[#1F2937] text-sm text-[#F59E0B]">
+            {error}
+          </div>
+        )}
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -157,7 +193,7 @@ export default function EventExplorer() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedEvents.map((event) => (
+              {items.map((event) => (
                 <TableRow key={event.id} className="border-[#1F2937] hover:bg-white/5">
                   <TableCell className="font-mono text-sm text-[#9CA3AF]">
                     {formatTimestamp(event.timestamp)}
@@ -176,35 +212,55 @@ export default function EventExplorer() {
                   </TableCell>
                 </TableRow>
               ))}
+              {!loading && items.length === 0 && (
+                <TableRow className="border-[#1F2937] hover:bg-transparent">
+                  <TableCell colSpan={5} className="text-center text-sm text-[#9CA3AF] p-8">
+                    No events found
+                  </TableCell>
+                </TableRow>
+              )}
+              {loading && (
+                <TableRow className="border-[#1F2937] hover:bg-transparent">
+                  <TableCell colSpan={5} className="text-center text-sm text-[#9CA3AF] p-8">
+                    Loading…
+                  </TableCell>
+                </TableRow>
+              )}
             </TableBody>
           </Table>
         </div>
 
         <div className="flex items-center justify-between p-4 border-t border-[#1F2937]">
           <div className="text-sm text-[#9CA3AF]">
-            Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{" "}
-            {Math.min(currentPage * ITEMS_PER_PAGE, filteredEvents.length)} of{" "}
-            {filteredEvents.length} events
+            Showing {items.length} event{items.length === 1 ? "" : "s"}
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
+              onClick={() => {
+                setCursorStack((prev) => {
+                  const next = prev.slice(0, -1);
+                  const previousCursor = prev[prev.length - 1] ?? null;
+                  setCursor(previousCursor);
+                  return next;
+                });
+              }}
+              disabled={cursorStack.length === 0 || loading}
               className="bg-[#0B0F14] border-[#1F2937] hover:bg-white/5 disabled:opacity-50 text-white"
             >
               <ChevronLeft className="w-4 h-4" />
               Previous
             </Button>
-            <div className="text-sm text-[#9CA3AF]">
-              Page {currentPage} of {totalPages}
-            </div>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
+              onClick={() => {
+                if (!nextCursor) return;
+                setCursorStack((prev) => [...prev, cursor ?? ""]);
+                setCursor(nextCursor);
+              }}
+              disabled={!nextCursor || loading}
               className="bg-[#0B0F14] border-[#1F2937] hover:bg-white/5 disabled:opacity-50 text-white"
             >
               Next
