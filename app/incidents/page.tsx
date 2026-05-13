@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Badge, Card } from "@/components/ui";
-import { incidents } from "@/lib/data";
 import { AlertTriangle, TrendingUp, Clock, CheckCircle2 } from "lucide-react";
+import { getIncidents } from "@/lib/api";
+import type { Incident } from "@/lib/data";
 
 function getSeverityBadge(severity: string) {
   switch (severity) {
@@ -71,7 +72,14 @@ function formatDuration(minutes: number) {
   return `${hours}h ${mins}m`;
 }
 
-export default function Incidents() {
+export default async function Incidents() {
+  let incidents: Incident[] = [];
+  try {
+    incidents = (await getIncidents({ limit: 100, service: "all", resolved: "all" })).items;
+  } catch {
+    incidents = [];
+  }
+
   const groupedIncidents = incidents.reduce(
     (acc, incident) => {
       if (!acc[incident.service]) {
@@ -80,7 +88,7 @@ export default function Incidents() {
       acc[incident.service].push(incident);
       return acc;
     },
-    {} as Record<string, typeof incidents>,
+    {} as Record<string, Incident[]>,
   );
 
   return (
@@ -91,6 +99,9 @@ export default function Incidents() {
       </div>
 
       <div className="space-y-8">
+        {incidents.length === 0 && (
+          <div className="text-sm text-[#9CA3AF]">Unable to load incidents.</div>
+        )}
         {Object.entries(groupedIncidents).map(([service, serviceIncidents]) => (
           <div key={service}>
             <h2 className="text-xl text-white mb-4 capitalize">{service} Service</h2>
